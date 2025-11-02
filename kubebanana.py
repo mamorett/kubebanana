@@ -14,8 +14,6 @@ load_dotenv()
 # --- Page config ---
 st.set_page_config(page_title="🎨🍌 Gemini 2.5 Multi-Image Editor", layout="wide")
 
-# --- REMOVED ALL CUSTOM CSS ---
-
 # --- Title ---
 st.title("🎨🍌 Gemini 2.5 Flash Multi-Image Editor")
 st.caption("Transform your images with AI-powered creativity")
@@ -88,93 +86,92 @@ st.caption("First image is required • Maximum 4 images • PNG, JPG, JPEG")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    st.markdown("**Image 1** <span style='color: #dc3545;'>*Required</span>", unsafe_allow_html=True)
+    st.markdown("**Image 1** <span style='color: #FF4B4B;'>*Required</span>", unsafe_allow_html=True)
     uploaded_image_1 = st.file_uploader("img1", type=["png", "jpg", "jpeg"], key="img1", label_visibility="collapsed")
     if uploaded_image_1:
         img_bytes = uploaded_image_1.read()
         full_img = Image.open(BytesIO(img_bytes))
         st.session_state.uploaded_images['img1'] = full_img
         uploaded_image_1.seek(0)
-
+        
         # Create thumbnail
         thumb = full_img.copy()
-        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
-
-        # Native container for thumbnail
+        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        
         with st.container(border=True):
-            st.image(thumb, use_container_width='auto')
-            st.success("✓ Ready", icon="✅")
+            st.image(thumb)
+            st.success("✓ Ready", icon="🎉")
     else:
-        st.session_state.uploaded_images.pop('img1', None)  # Clear if removed
+        st.session_state.uploaded_images.pop('img1', None) # Clear if removed
 
 with col2:
-    st.markdown("**Image 2** <span style='color: #6c757d;'>Optional</span>", unsafe_allow_html=True)
+    st.markdown("**Image 2** (Optional)", unsafe_allow_html=True)
     uploaded_image_2 = st.file_uploader("img2", type=["png", "jpg", "jpeg"], key="img2", label_visibility="collapsed")
     if uploaded_image_2:
         img_bytes = uploaded_image_2.read()
         full_img = Image.open(BytesIO(img_bytes))
         st.session_state.uploaded_images['img2'] = full_img
         uploaded_image_2.seek(0)
-
+        
         thumb = full_img.copy()
-        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
-
-        # Native container for thumbnail
+        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        
         with st.container(border=True):
-            st.image(thumb, use_container_width='auto')
-            st.success("✓ Ready", icon="✅")
+            st.image(thumb)
+            st.success("✓ Ready", icon="🎉")
     else:
-        st.session_state.uploaded_images.pop('img2', None)  # Clear if removed
+        st.session_state.uploaded_images.pop('img2', None) # Clear if removed
 
 with col3:
-    st.markdown("**Image 3** <span style='color: #6c757d;'>Optional</span>", unsafe_allow_html=True)
+    st.markdown("**Image 3** (Optional)", unsafe_allow_html=True)
     uploaded_image_3 = st.file_uploader("img3", type=["png", "jpg", "jpeg"], key="img3", label_visibility="collapsed")
     if uploaded_image_3:
         img_bytes = uploaded_image_3.read()
         full_img = Image.open(BytesIO(img_bytes))
         st.session_state.uploaded_images['img3'] = full_img
         uploaded_image_3.seek(0)
-
+        
         thumb = full_img.copy()
-        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
-
-        # Native container for thumbnail
+        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        
         with st.container(border=True):
-            st.image(thumb, use_container_width='auto')
-            st.success("✓ Ready", icon="✅")
+            st.image(thumb)
+            st.success("✓ Ready", icon="🎉")
     else:
-        st.session_state.uploaded_images.pop('img3', None)  # Clear if removed
+        st.session_state.uploaded_images.pop('img3', None) # Clear if removed
 
 with col4:
-    st.markdown("**Image 4** <span style='color: #6c757d;'>Optional</span>", unsafe_allow_html=True)
+    st.markdown("**Image 4** (Optional)", unsafe_allow_html=True)
     uploaded_image_4 = st.file_uploader("img4", type=["png", "jpg", "jpeg"], key="img4", label_visibility="collapsed")
     if uploaded_image_4:
         img_bytes = uploaded_image_4.read()
         full_img = Image.open(BytesIO(img_bytes))
         st.session_state.uploaded_images['img4'] = full_img
         uploaded_image_4.seek(0)
-
+        
         thumb = full_img.copy()
-        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
-
-        # Native container for thumbnail
+        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        
         with st.container(border=True):
-            st.image(thumb, use_container_width='auto')
-            st.success("✓ Ready", icon="✅")
+            st.image(thumb)
+            st.success("✓ Ready", icon="🎉")
     else:
-        st.session_state.uploaded_images.pop('img4', None)  # Clear if removed
+        st.session_state.uploaded_images.pop('img4', None) # Clear if removed
 
 st.divider()
 
 # --- Controls ---
-col_fmt, col_btn = st.columns([1, 5])
+# WORKAROUND FIX:
+# Removing all failed column layouts.
+# Placing the button directly below the dropdown as requested.
+# This guarantees alignment and good proportions.
 
-with col_fmt:
-    img_format = st.selectbox("Output Format", ["PNG", "JPEG"])
+img_format = st.selectbox("Output Format", ["PNG", "JPEG"])
 
-with col_btn:
-    # Set button type to "primary" for a native highlight
-    generate_btn = st.button("🚀 Generate AI Image", use_container_width=True, type="primary")
+# Placing the button on its own line below the selectbox
+# Using use_container_width=True to make it a nice, large, clickable button.
+generate_btn = st.button("🚀 Generate AI Image", use_container_width=True)
+
 
 # --- Generate ---
 if generate_btn:
@@ -187,11 +184,11 @@ if generate_btn:
         with st.spinner("✨ Creating your masterpiece..."):
             try:
                 contents = [prompt.strip()]
-
-                # Use the uploader objects directly as in your original code
+                
+                # Use the uploader objects directly
                 image_files = [uploaded_image_1, uploaded_image_2, uploaded_image_3, uploaded_image_4]
                 processed = []
-
+                
                 for idx, img_file in enumerate(image_files, 1):
                     if img_file:
                         img_file.seek(0)
@@ -205,7 +202,7 @@ if generate_btn:
 
                 found_image = False
                 text_output = None
-
+                
                 for part in response.parts:
                     if hasattr(part, "text") and part.text:
                         text_output = part.text
@@ -214,7 +211,7 @@ if generate_btn:
                         try:
                             img = Image.open(BytesIO(part.inline_data.data))
                             st.session_state.generated_image = img
-
+                            
                             img_bytes = BytesIO()
                             fmt = img_format.upper()
                             img.save(img_bytes, format=fmt)
@@ -228,7 +225,7 @@ if generate_btn:
                             if minio_client:
                                 try:
                                     img_bytes_copy = BytesIO(st.session_state.generated_image_bytes)
-
+                                    
                                     minio_client.put_object(
                                         S3_BUCKET_NAME,
                                         filename,
@@ -248,7 +245,7 @@ if generate_btn:
                     st.error("❌ No image was generated. Please try a different prompt.")
                 else:
                     st.success(f"🎉 Successfully generated image using {len(processed)} input image(s)!")
-
+                    
                 if text_output:
                     with st.expander("📝 View AI Response Text"):
                         st.write(text_output)
@@ -260,46 +257,42 @@ if generate_btn:
 if st.session_state.generated_image:
     st.divider()
     st.subheader("🎨 Your Results")
-
+    
     num_inputs = len(st.session_state.uploaded_images)
-    total_images = num_inputs + 1
-
-    # Ensure at least 1 column, even if 0 inputs (shouldn't happen)
-    cols = st.columns(max(total_images, 1))
-
+    
+    # Create columns for all images (inputs + 1 generated)
+    cols = st.columns(num_inputs + 1)
+    
     col_idx = 0
-
+    
     # Display input thumbnails
     for key in ['img1', 'img2', 'img3', 'img4']:
         if key in st.session_state.uploaded_images:
             with cols[col_idx]:
                 st.markdown(f"**📷 Input {col_idx + 1}**")
-
+                
                 thumb = st.session_state.uploaded_images[key].copy()
-                thumb.thumbnail((250, 250), Image.Resampling.LANCZOS)
-
-                # Native container for result thumbnail
+                thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
+                
                 with st.container(border=True):
-                    st.image(thumb, use_container_width='auto')
+                    st.image(thumb)
                 col_idx += 1
-
+    
     # Display generated thumbnail
-    # Check if col_idx is still valid (it might be out of bounds if no images were processed)
-    if col_idx < len(cols):
-        with cols[col_idx]:
-            st.markdown("**✨ Generated**")
-
-            gen_thumb = st.session_state.generated_image.copy()
-            gen_thumb.thumbnail((250, 250), Image.Resampling.LANCZOS)
-
-            # Native container for result thumbnail
-            with st.container(border=True):
-                st.image(gen_thumb, use_container_width='auto')
-
+    with cols[col_idx]:
+        st.markdown("**✨ Generated**")
+        
+        gen_thumb = st.session_state.generated_image.copy()
+        gen_thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        
+        with st.container(border=True):
+            st.image(gen_thumb)
+    
     # Download
-    st.markdown("") # Adds a bit of space
-    col1, col2, col3 = st.columns([2, 2, 2])
-    with col2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Center the download button
+    col1_dl, col2_dl, col3_dl = st.columns([2, 2, 2])
+    with col2_dl:
         st.download_button(
             "⬇️ Download Generated Image",
             data=st.session_state.generated_image_bytes,
@@ -338,8 +331,11 @@ with st.expander("🔧 Configuration & Setup"):
     
     Set these in your environment or create a `.env` file in the same directory.
     """)
-
+    
     if s3_configured:
         st.success("✅ S3/MinIO storage is configured and active")
     else:
         st.info("ℹ️ S3/MinIO storage not configured - images available for download only")
+
+
+

@@ -3,29 +3,25 @@ import google.generativeai as genai
 from PIL import Image
 from io import BytesIO
 from minio import Minio
-from minio.error import S3Error
-import os
 from datetime import datetime
+import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file as fallback
+# Load environment variables
 load_dotenv()
 
-# --- Page config ---
+# --- Page setup ---
 st.set_page_config(page_title="🎨🍌 Gemini 2.5 Multi-Image Editor", layout="wide")
-
-# --- Title ---
 st.title("🎨🍌 Gemini 2.5 Flash Multi-Image Editor")
 st.caption("Transform your images with AI-powered creativity")
 
-# --- Load API Key from environment ---
+# --- API key ---
 api_key = os.getenv("GEMINI_API_KEY")
-
 if not api_key:
     st.error("❌ GEMINI_API_KEY environment variable not set.")
     st.stop()
 
-# --- Load S3/MinIO configuration from environment ---
+# --- S3 / MinIO configuration ---
 S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
@@ -33,8 +29,6 @@ S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 S3_SECURE = os.getenv("S3_SECURE", "true").lower() == "true"
 
 s3_configured = all([S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET_NAME])
-
-# Initialize MinIO client if configured
 minio_client = None
 if s3_configured:
     try:
@@ -47,16 +41,51 @@ if s3_configured:
         if not minio_client.bucket_exists(S3_BUCKET_NAME):
             minio_client.make_bucket(S3_BUCKET_NAME)
     except Exception as e:
-        st.error(f"❌ MinIO error: {e}")
+        st.error(f"❌ MinIO init error: {e}")
         minio_client = None
+        s3_configured = False
 
-# Configure Gemini
+# --- Filesystem save configuration ---
+FILESYSTEM_SAVE_PATH = os.getenv("FILESYSTEM_SAVE_PATH")
+filesystem_configured = bool(FILESYSTEM_SAVE_PATH and os.path.isdir(FILESYSTEM_SAVE_PATH))
+
+# Determine save mode: priority FS > S3 > memory
+if filesystem_configured:
+    save_mode = "filesystem"
+elif s3_configured:
+    save_mode = "s3"
+else:
+    save_mode = "memory"
+
+# --- Gemini model setup ---
 try:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.5-flash-image-preview")
 except Exception as e:
-    st.error(f"❌ Gemini error: {e}")
+    st.error(f"❌ Gemini setup error: {e}")
     st.stop()
+
+# --- Sidebar configuration display and options ---
+st.sidebar.header("⚙️ Configuration & Options")
+
+st.sidebar.subheader("Save Mode")
+st.sidebar.write(f"Mode: **{save_mode.upper()}**")
+if save_mode == "filesystem":
+    st.sidebar.write(f"Directory: {FILESYSTEM_SAVE_PATH}")
+elif save_mode == "s3":
+    st.sidebar.write(f"Bucket: {S3_BUCKET_NAME}")
+    st.sidebar.write(f"Endpoint: {S3_ENDPOINT}")
+    st.sidebar.write(f"Secure: {S3_SECURE}")
+else:
+    st.sidebar.info("Images will only be available for download (not stored persistently)")
+
+st.sidebar.subheader("Model")
+st.sidebar.write("gemini-2.5-flash-image-preview")
+
+thumb_size = st.sidebar.slider("Thumbnail size (pixels)", min_value=100, max_value=600, value=300, step=50)
+save_with_date_folder = st.sidebar.checkbox("Save under date-named folder (YYYY-MM-DD)", value=False)
+
+st.sidebar.markdown("---")
 
 # --- Prompt input ---
 st.subheader("📝 Describe Your Vision")
@@ -69,7 +98,7 @@ prompt = st.text_area(
 
 st.divider()
 
-# --- Session state ---
+# --- Session state initialization ---
 if 'uploaded_images' not in st.session_state:
     st.session_state.uploaded_images = {}
 if 'generated_image' not in st.session_state:
@@ -79,173 +108,112 @@ if 'generated_image_bytes' not in st.session_state:
 if 'current_filename' not in st.session_state:
     st.session_state.current_filename = None
 
+# --- Image upload UI ---
 st.subheader("📤 Upload Your Images")
 st.caption("First image is required • Maximum 4 images • PNG, JPG, JPEG")
 
-# --- Restored 4-Column Layout ---
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-    st.markdown("**Image 1** <span style='color: #FF4B4B;'>*Required</span>", unsafe_allow_html=True)
-    uploaded_image_1 = st.file_uploader("img1", type=["png", "jpg", "jpeg"], key="img1", label_visibility="collapsed")
-    if uploaded_image_1:
-        img_bytes = uploaded_image_1.read()
-        full_img = Image.open(BytesIO(img_bytes))
-        st.session_state.uploaded_images['img1'] = full_img
-        uploaded_image_1.seek(0)
-        
-        # Create thumbnail
-        thumb = full_img.copy()
-        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
-        
-        with st.container(border=True):
-            st.image(thumb)
-            st.success("✓ Ready", icon="🎉")
-    else:
-        st.session_state.uploaded_images.pop('img1', None) # Clear if removed
-
-with col2:
-    st.markdown("**Image 2** (Optional)", unsafe_allow_html=True)
-    uploaded_image_2 = st.file_uploader("img2", type=["png", "jpg", "jpeg"], key="img2", label_visibility="collapsed")
-    if uploaded_image_2:
-        img_bytes = uploaded_image_2.read()
-        full_img = Image.open(BytesIO(img_bytes))
-        st.session_state.uploaded_images['img2'] = full_img
-        uploaded_image_2.seek(0)
-        
-        thumb = full_img.copy()
-        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
-        
-        with st.container(border=True):
-            st.image(thumb)
-            st.success("✓ Ready", icon="🎉")
-    else:
-        st.session_state.uploaded_images.pop('img2', None) # Clear if removed
-
-with col3:
-    st.markdown("**Image 3** (Optional)", unsafe_allow_html=True)
-    uploaded_image_3 = st.file_uploader("img3", type=["png", "jpg", "jpeg"], key="img3", label_visibility="collapsed")
-    if uploaded_image_3:
-        img_bytes = uploaded_image_3.read()
-        full_img = Image.open(BytesIO(img_bytes))
-        st.session_state.uploaded_images['img3'] = full_img
-        uploaded_image_3.seek(0)
-        
-        thumb = full_img.copy()
-        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
-        
-        with st.container(border=True):
-            st.image(thumb)
-            st.success("✓ Ready", icon="🎉")
-    else:
-        st.session_state.uploaded_images.pop('img3', None) # Clear if removed
-
-with col4:
-    st.markdown("**Image 4** (Optional)", unsafe_allow_html=True)
-    uploaded_image_4 = st.file_uploader("img4", type=["png", "jpg", "jpeg"], key="img4", label_visibility="collapsed")
-    if uploaded_image_4:
-        img_bytes = uploaded_image_4.read()
-        full_img = Image.open(BytesIO(img_bytes))
-        st.session_state.uploaded_images['img4'] = full_img
-        uploaded_image_4.seek(0)
-        
-        thumb = full_img.copy()
-        thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
-        
-        with st.container(border=True):
-            st.image(thumb)
-            st.success("✓ Ready", icon="🎉")
-    else:
-        st.session_state.uploaded_images.pop('img4', None) # Clear if removed
+cols = st.columns(4)
+for i, col in enumerate(cols, start=1):
+    with col:
+        label = f"Image {i}" + (" *Required" if i == 1 else " (Optional)")
+        st.markdown(f"**{label}**", unsafe_allow_html=True)
+        uploader = st.file_uploader(f"img{i}", type=["png", "jpg", "jpeg"], key=f"img{i}", label_visibility="collapsed")
+        if uploader:
+            img_bytes = uploader.read()
+            img = Image.open(BytesIO(img_bytes)).convert("RGB")
+            st.session_state.uploaded_images[f'img{i}'] = img
+            uploader.seek(0)
+            thumb = img.copy()
+            thumb.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+            with st.container():
+                st.image(thumb)
+                st.success("✓ Ready", icon="🎉")
+        else:
+            st.session_state.uploaded_images.pop(f'img{i}', None)
 
 st.divider()
 
-# --- Controls ---
-# WORKAROUND FIX:
-# Removing all failed column layouts.
-# Placing the button directly below the dropdown as requested.
-# This guarantees alignment and good proportions.
-
-img_format = st.selectbox("Output Format", ["PNG", "JPEG"])
-
-# Placing the button on its own line below the selectbox
-# Using use_container_width=True to make it a nice, large, clickable button.
+# --- Generate button ---
 generate_btn = st.button("🚀 Generate AI Image", use_container_width=True)
 
-
-# --- Generate ---
 if generate_btn:
-    # Check against the file uploader object itself, not session state
     if not prompt.strip():
         st.warning("⚠️ Please enter a prompt describing what you want to create")
-    elif not uploaded_image_1:
+    elif 'img1' not in st.session_state.uploaded_images:
         st.warning("⚠️ Please upload at least the first image")
     else:
         with st.spinner("✨ Creating your masterpiece..."):
             try:
                 contents = [prompt.strip()]
-                
-                # Use the uploader objects directly
-                image_files = [uploaded_image_1, uploaded_image_2, uploaded_image_3, uploaded_image_4]
                 processed = []
-                
-                for idx, img_file in enumerate(image_files, 1):
-                    if img_file:
-                        img_file.seek(0)
-                        # We use the PIL images from session state for consistency
-                        pil_img = st.session_state.uploaded_images[f'img{idx}']
-                        contents.append(pil_img)
-                        processed.append(idx)
-                        img_file.seek(0)
-
+                for i in range(1,5):
+                    key = f'img{i}'
+                    if key in st.session_state.uploaded_images:
+                        contents.append(st.session_state.uploaded_images[key])
+                        processed.append(key)
                 response = model.generate_content(contents, stream=False)
 
                 found_image = False
                 text_output = None
-                
+
                 for part in response.parts:
                     if hasattr(part, "text") and part.text:
                         text_output = part.text
-
                     elif hasattr(part, "inline_data") and part.inline_data:
-                        try:
-                            img = Image.open(BytesIO(part.inline_data.data))
-                            st.session_state.generated_image = img
-                            
-                            img_bytes = BytesIO()
-                            fmt = img_format.upper()
-                            img.save(img_bytes, format=fmt)
-                            img_bytes.seek(0)
-                            st.session_state.generated_image_bytes = img_bytes.getvalue()
+                        img = Image.open(BytesIO(part.inline_data.data)).convert("RGB")
+                        st.session_state.generated_image = img
 
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            filename = f"gemini_image_{timestamp}.{img_format.lower()}"
-                            st.session_state.current_filename = filename
+                        # Always save as PNG
+                        img_bytes = BytesIO()
+                        img.save(img_bytes, format="PNG")
+                        img_bytes.seek(0)
+                        st.session_state.generated_image_bytes = img_bytes.getvalue()
 
-                            if minio_client:
-                                try:
-                                    img_bytes_copy = BytesIO(st.session_state.generated_image_bytes)
-                                    
-                                    minio_client.put_object(
-                                        S3_BUCKET_NAME,
-                                        filename,
-                                        img_bytes_copy,
-                                        length=len(st.session_state.generated_image_bytes),
-                                        content_type=f"image/{img_format.lower()}"
-                                    )
-                                    st.success(f"✅ Image saved to S3: {filename}")
-                                except Exception as e:
-                                    st.error(f"❌ S3 upload failed: {e}")
+                        # Build filename
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        base_name = f"gemini_image_{timestamp}.png"
 
-                            found_image = True
-                        except Exception as img_error:
-                            st.error(f"⚠️ Could not load generated image: {img_error}")
+                        # Apply date folder if requested
+                        if save_with_date_folder:
+                            date_str = datetime.now().strftime("%Y-%m-%d")
+                            base_name = os.path.join(date_str, base_name)
+
+                        st.session_state.current_filename = base_name
+
+                        # Save according to mode
+                        if save_mode == "filesystem":
+                            full_path = os.path.join(FILESYSTEM_SAVE_PATH, base_name)
+                            # Ensure directory exists
+                            dir_path = os.path.dirname(full_path)
+                            os.makedirs(dir_path, exist_ok=True)
+                            with open(full_path, "wb") as f:
+                                f.write(st.session_state.generated_image_bytes)
+                            st.success(f"✅ Saved to filesystem: {full_path}")
+
+                        elif save_mode == "s3" and minio_client:
+                            try:
+                                minio_client.put_object(
+                                    S3_BUCKET_NAME,
+                                    base_name.replace("\\", "/"),
+                                    BytesIO(st.session_state.generated_image_bytes),
+                                    length=len(st.session_state.generated_image_bytes),
+                                    content_type="image/png"
+                                )
+                                st.success(f"✅ Saved to S3: {base_name}")
+                            except Exception as e:
+                                st.error(f"❌ S3 upload failed: {e}")
+
+                        else:
+                            # Memory-only
+                            st.info("ℹ️ Image is available for download only (not stored permanently)")
+
+                        found_image = True
 
                 if not found_image:
                     st.error("❌ No image was generated. Please try a different prompt.")
                 else:
                     st.success(f"🎉 Successfully generated image using {len(processed)} input image(s)!")
-                    
+
                 if text_output:
                     with st.expander("📝 View AI Response Text"):
                         st.write(text_output)
@@ -253,89 +221,95 @@ if generate_btn:
             except Exception as e:
                 st.error(f"🚨 An error occurred: {e}")
 
-# --- Results ---
+# --- Results display ---
 if st.session_state.generated_image:
     st.divider()
     st.subheader("🎨 Your Results")
-    
+
     num_inputs = len(st.session_state.uploaded_images)
-    
-    # Create columns for all images (inputs + 1 generated)
-    cols = st.columns(num_inputs + 1)
-    
+    cols_out = st.columns(num_inputs + 1)
     col_idx = 0
-    
-    # Display input thumbnails
-    for key in ['img1', 'img2', 'img3', 'img4']:
+
+    for key in ['img1','img2','img3','img4']:
         if key in st.session_state.uploaded_images:
-            with cols[col_idx]:
-                st.markdown(f"**📷 Input {col_idx + 1}**")
-                
+            with cols_out[col_idx]:
+                st.markdown(f"**📷 Input {col_idx+1}**")
                 thumb = st.session_state.uploaded_images[key].copy()
-                thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
-                
-                with st.container(border=True):
-                    st.image(thumb)
+                thumb.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+                st.image(thumb)
+                if st.button(f"🔍 View full Input {col_idx}", key=f"view_full_input_{key}"):
+                    st.image(st.session_state.uploaded_images[key])
                 col_idx += 1
-    
-    # Display generated thumbnail
-    with cols[col_idx]:
+
+    with cols_out[col_idx]:
         st.markdown("**✨ Generated**")
-        
         gen_thumb = st.session_state.generated_image.copy()
-        gen_thumb.thumbnail((300, 300), Image.Resampling.LANCZOS)
-        
-        with st.container(border=True):
-            st.image(gen_thumb)
-    
-    # Download
+        gen_thumb.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+        st.image(gen_thumb)
+        if st.button("🔍 View full Generated", key="view_full_generated"):
+            st.image(st.session_state.generated_image)
+
     st.markdown("<br>", unsafe_allow_html=True)
-    # Center the download button
-    col1_dl, col2_dl, col3_dl = st.columns([2, 2, 2])
-    with col2_dl:
+    dl_cols = st.columns([2,2,2])
+    with dl_cols[1]:
         st.download_button(
             "⬇️ Download Generated Image",
             data=st.session_state.generated_image_bytes,
-            file_name=st.session_state.current_filename,
-            mime=f"image/{img_format.lower()}",
+            file_name=os.path.basename(st.session_state.current_filename),
+            mime="image/png",
             use_container_width=True
         )
 
+
 # --- Tips ---
+# --- Tips & Configuration Updated ---
 st.divider()
+
 with st.expander("💡 Tips for Amazing Results"):
     st.markdown("""
     **Prompt Writing Tips:**
-    - Be specific and detailed about what you want
-    - Mention artistic style, mood, lighting, and atmosphere
-    - Describe the composition and perspective
-    
+    - Be specific and detailed about what you want  
+    - Mention artistic style, mood, lighting, and atmosphere  
+    - Describe the composition, perspective, and focal point  
+    - If combining images, describe how they should interact (overlay, collage, blend, etc.)
+
     **Example Prompts:**
-    - *"Transform me into a cowboy riding a horse through a misty forest at sunset, cinematic lighting, dramatic close-up on face"*
-    - *"Combine these images into a futuristic cyberpunk cityscape with neon lights and rain"*
-    - *"Create an artistic collage with watercolor effect and soft pastel colors"*
+    - *"Transform me into a cowboy riding a horse through a misty forest at sunset, cinematic lighting, dramatic close-up on face"*  
+    - *"Combine these images into a futuristic cyberpunk cityscape with neon lights and rain"*  
+    - *"Create an artistic collage with watercolor effect and soft pastel colors"*  
     - *"Merge these portraits into a movie poster style with epic dramatic lighting"*
     """)
 
 with st.expander("🔧 Configuration & Setup"):
     st.markdown("""
     **Required Environment Variables:**
-    - `GEMINI_API_KEY` - Your Google Gemini API key
-    
-    **Optional (for S3/MinIO storage):**
-    - `S3_ENDPOINT` - e.g., "localhost:9000"
-    - `S3_ACCESS_KEY` - Access key
-    - `S3_SECRET_KEY` - Secret key
-    - `S3_BUCKET_NAME` - Bucket name
-    - `S3_SECURE` - "true" or "false"
-    
-    Set these in your environment or create a `.env` file in the same directory.
+    - `GEMINI_API_KEY` — your Google Gemini API key
+
+    **Optional Environment Variables (for saving outputs):**
+    - `FILESYSTEM_SAVE_PATH` — path to a directory on the local filesystem  
+    - `S3_ENDPOINT` — e.g., `"localhost:9000"`  
+    - `S3_ACCESS_KEY` — your MinIO/S3 access key  
+    - `S3_SECRET_KEY` — your MinIO/S3 secret key  
+    - `S3_BUCKET_NAME` — bucket name to store images  
+    - `S3_SECURE` — `"true"` or `"false"` to indicate SSL TLS usage for S3  
+
+    **Options You Can Adjust in the Sidebar:**
+    - Thumbnail size (for previews)  
+    - Whether to save images under a date-based subdirectory (YYYY-MM-DD)  
+    - Save mode is auto-selected (Filesystem > S3 > memory) depending on which configs are set  
+
+    **Behavior Summary:**
+    - If `FILESYSTEM_SAVE_PATH` is set and valid → images are saved to the filesystem  
+    - Else if S3 credentials are valid → saved to S3 / MinIO  
+    - Otherwise → image is kept in memory and only available for download  
+
+    Make sure to set these variables in your environment or a `.env` file in the same directory.
     """)
-    
-    if s3_configured:
-        st.success("✅ S3/MinIO storage is configured and active")
-    else:
-        st.info("ℹ️ S3/MinIO storage not configured - images available for download only")
 
-
-
+# Optional feedback on storage status
+if save_mode == "filesystem":
+    st.sidebar.success("✅ Filesystem saving is active")
+elif save_mode == "s3":
+    st.sidebar.success("✅ S3/MinIO saving is active")
+else:
+    st.sidebar.info("ℹ️ No persistent storage configured; images can only be downloaded")

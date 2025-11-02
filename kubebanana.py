@@ -260,25 +260,24 @@ if st.session_state.generated_image:
             use_container_width=True
         )
 
-
-# --- Tips ---
-# --- Tips & Configuration Updated ---
+# --- Updated Inspiration & Example Prompts Section (English README, fixed rendering) ---
 st.divider()
-
-with st.expander("💡 Tips for Amazing Results"):
+with st.expander("💡 Inspiration & Example Prompts (from Awesome-Nano-Banana-Images)"):
     st.markdown("""
-    **Prompt Writing Tips:**
-    - Be specific and detailed about what you want  
-    - Mention artistic style, mood, lighting, and atmosphere  
-    - Describe the composition, perspective, and focal point  
-    - If combining images, describe how they should interact (overlay, collage, blend, etc.)
+    Want to generate amazing images with this same model (Nano-Banana / Gemini-2.5-flash-image)?  
+    Check out the [Awesome-Nano-Banana-Images Gallery (English)](https://github.com/PicoTrex/Awesome-Nano-Banana-images/blob/main/README_en.md) for prompts + outputs curated to inspire creativity.
 
-    **Example Prompts:**
-    - *"Transform me into a cowboy riding a horse through a misty forest at sunset, cinematic lighting, dramatic close-up on face"*  
-    - *"Combine these images into a futuristic cyberpunk cityscape with neon lights and rain"*  
-    - *"Create an artistic collage with watercolor effect and soft pastel colors"*  
-    - *"Merge these portraits into a movie poster style with epic dramatic lighting"*
+    Here are some example prompts drawn from that collection:
+
+    - `Turn illustrations into figures` — upload an illustration and convert it to a 3D figure or toy-like model  
+    - `Photos of yourself from different eras` — take a portrait and generate versions in styles from various historical periods  
+    - `Coloring the line art using a color palette` — upload line art and a color palette reference and color accordingly  
+    - `Change into a specific outfit` — specify desired clothing and style details for the subject in the image  
+
     """)
+
+
+    st.markdown("🔗 Explore all the examples & prompts → [Awesome-Nano-Banana-Images (English)](https://github.com/PicoTrex/Awesome-Nano-Banana-images/blob/main/README_en.md)")
 
 with st.expander("🔧 Configuration & Setup"):
     st.markdown("""

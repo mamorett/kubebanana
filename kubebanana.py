@@ -12,19 +12,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Page config ---
-st.set_page_config(page_title="🎨🍌 Gemini 2.5 Multi-Image Editor", layout="centered")
+st.set_page_config(page_title="🎨🍌 Gemini 2.5 Multi-Image Editor", layout="wide")
 
-# Centered title using HTML
-st.markdown(
-    "<h2 style='text-align: center;'>🎨🍌 Gemini 2.5 Flash Multi-Image Editor</h2>",
-    unsafe_allow_html=True
-)
+# --- REMOVED ALL CUSTOM CSS ---
+
+# --- Title ---
+st.title("🎨🍌 Gemini 2.5 Flash Multi-Image Editor")
+st.caption("Transform your images with AI-powered creativity")
 
 # --- Load API Key from environment ---
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("❌ GEMINI_API_KEY environment variable not set. Please configure it in your environment or .env file and restart the app.")
+    st.error("❌ GEMINI_API_KEY environment variable not set.")
     st.stop()
 
 # --- Load S3/MinIO configuration from environment ---
@@ -32,14 +32,9 @@ S3_ENDPOINT = os.getenv("S3_ENDPOINT")
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-S3_SECURE = os.getenv("S3_SECURE", "true").lower() == "true"  # Default to True
+S3_SECURE = os.getenv("S3_SECURE", "true").lower() == "true"
 
-# Validate S3 configuration
 s3_configured = all([S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET_NAME])
-
-if not s3_configured:
-    st.warning("⚠️ S3/MinIO configuration incomplete. Image saving to object storage will be disabled.")
-    st.info("Required environment variables: S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET_NAME, S3_SECURE (optional)")
 
 # Initialize MinIO client if configured
 minio_client = None
@@ -51,12 +46,10 @@ if s3_configured:
             secret_key=S3_SECRET_KEY,
             secure=S3_SECURE
         )
-        # Check if bucket exists, create if not
         if not minio_client.bucket_exists(S3_BUCKET_NAME):
             minio_client.make_bucket(S3_BUCKET_NAME)
-            st.success(f"✅ Created bucket: {S3_BUCKET_NAME}")
     except Exception as e:
-        st.error(f"❌ Failed to initialize MinIO client: {e}")
+        st.error(f"❌ MinIO error: {e}")
         minio_client = None
 
 # Configure Gemini
@@ -64,170 +57,289 @@ try:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.5-flash-image-preview")
 except Exception as e:
-    st.error(f"❌ Invalid API key or model error: {e}")
+    st.error(f"❌ Gemini error: {e}")
     st.stop()
 
 # --- Prompt input ---
-prompt = st.text_area("📝 Enter your image prompt (e.g. 'Merge these images into a cinematic scene')", height=150)
+st.subheader("📝 Describe Your Vision")
+prompt = st.text_area(
+    "prompt",
+    height=100,
+    placeholder="Example: 'Merge these images into an epic cinematic scene with dramatic lighting and intense atmosphere'",
+    label_visibility="collapsed"
+)
 
-# --- Image uploaders (4 separate boxes, first is mandatory) ---
-st.markdown("### 📤 Upload Images")
-st.markdown("*First image is mandatory, others are optional*")
+st.divider()
 
-col1, col2 = st.columns(2)
+# --- Session state ---
+if 'uploaded_images' not in st.session_state:
+    st.session_state.uploaded_images = {}
+if 'generated_image' not in st.session_state:
+    st.session_state.generated_image = None
+if 'generated_image_bytes' not in st.session_state:
+    st.session_state.generated_image_bytes = None
+if 'current_filename' not in st.session_state:
+    st.session_state.current_filename = None
+
+st.subheader("📤 Upload Your Images")
+st.caption("First image is required • Maximum 4 images • PNG, JPG, JPEG")
+
+# --- Restored 4-Column Layout ---
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    uploaded_image_1 = st.file_uploader(
-        "📷 Image 1 (Required)",
-        type=["png", "jpg", "jpeg"],
-        key="img1"
-    )
-    
-with col2:
-    uploaded_image_2 = st.file_uploader(
-        "📷 Image 2 (Optional)",
-        type=["png", "jpg", "jpeg"],
-        key="img2"
-    )
+    st.markdown("**Image 1** <span style='color: #dc3545;'>*Required</span>", unsafe_allow_html=True)
+    uploaded_image_1 = st.file_uploader("img1", type=["png", "jpg", "jpeg"], key="img1", label_visibility="collapsed")
+    if uploaded_image_1:
+        img_bytes = uploaded_image_1.read()
+        full_img = Image.open(BytesIO(img_bytes))
+        st.session_state.uploaded_images['img1'] = full_img
+        uploaded_image_1.seek(0)
 
-col3, col4 = st.columns(2)
+        # Create thumbnail
+        thumb = full_img.copy()
+        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
+
+        # Native container for thumbnail
+        with st.container(border=True):
+            st.image(thumb, use_container_width='auto')
+            st.success("✓ Ready", icon="✅")
+    else:
+        st.session_state.uploaded_images.pop('img1', None)  # Clear if removed
+
+with col2:
+    st.markdown("**Image 2** <span style='color: #6c757d;'>Optional</span>", unsafe_allow_html=True)
+    uploaded_image_2 = st.file_uploader("img2", type=["png", "jpg", "jpeg"], key="img2", label_visibility="collapsed")
+    if uploaded_image_2:
+        img_bytes = uploaded_image_2.read()
+        full_img = Image.open(BytesIO(img_bytes))
+        st.session_state.uploaded_images['img2'] = full_img
+        uploaded_image_2.seek(0)
+
+        thumb = full_img.copy()
+        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
+
+        # Native container for thumbnail
+        with st.container(border=True):
+            st.image(thumb, use_container_width='auto')
+            st.success("✓ Ready", icon="✅")
+    else:
+        st.session_state.uploaded_images.pop('img2', None)  # Clear if removed
 
 with col3:
-    uploaded_image_3 = st.file_uploader(
-        "📷 Image 3 (Optional)",
-        type=["png", "jpg", "jpeg"],
-        key="img3"
-    )
-    
-with col4:
-    uploaded_image_4 = st.file_uploader(
-        "📷 Image 4 (Optional)",
-        type=["png", "jpg", "jpeg"],
-        key="img4"
-    )
+    st.markdown("**Image 3** <span style='color: #6c757d;'>Optional</span>", unsafe_allow_html=True)
+    uploaded_image_3 = st.file_uploader("img3", type=["png", "jpg", "jpeg"], key="img3", label_visibility="collapsed")
+    if uploaded_image_3:
+        img_bytes = uploaded_image_3.read()
+        full_img = Image.open(BytesIO(img_bytes))
+        st.session_state.uploaded_images['img3'] = full_img
+        uploaded_image_3.seek(0)
 
-# --- Format selector ---
-img_format = st.selectbox("🖼️ Choose Download Format", ["PNG", "JPEG"])
+        thumb = full_img.copy()
+        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
 
-# --- Generate button ---
-if st.button("🚀 Generate"):
-    if not prompt.strip():
-        st.warning("⚠️ Please enter a prompt.")
-    elif not uploaded_image_1:
-        st.warning("⚠️ You must upload at least the first image.")
+        # Native container for thumbnail
+        with st.container(border=True):
+            st.image(thumb, use_container_width='auto')
+            st.success("✓ Ready", icon="✅")
     else:
-        with st.spinner("✨ Generating image..."):
+        st.session_state.uploaded_images.pop('img3', None)  # Clear if removed
+
+with col4:
+    st.markdown("**Image 4** <span style='color: #6c757d;'>Optional</span>", unsafe_allow_html=True)
+    uploaded_image_4 = st.file_uploader("img4", type=["png", "jpg", "jpeg"], key="img4", label_visibility="collapsed")
+    if uploaded_image_4:
+        img_bytes = uploaded_image_4.read()
+        full_img = Image.open(BytesIO(img_bytes))
+        st.session_state.uploaded_images['img4'] = full_img
+        uploaded_image_4.seek(0)
+
+        thumb = full_img.copy()
+        thumb.thumbnail((200, 200), Image.Resampling.LANCZOS)
+
+        # Native container for thumbnail
+        with st.container(border=True):
+            st.image(thumb, use_container_width='auto')
+            st.success("✓ Ready", icon="✅")
+    else:
+        st.session_state.uploaded_images.pop('img4', None)  # Clear if removed
+
+st.divider()
+
+# --- Controls ---
+col_fmt, col_btn = st.columns([1, 5])
+
+with col_fmt:
+    img_format = st.selectbox("Output Format", ["PNG", "JPEG"])
+
+with col_btn:
+    # Set button type to "primary" for a native highlight
+    generate_btn = st.button("🚀 Generate AI Image", use_container_width=True, type="primary")
+
+# --- Generate ---
+if generate_btn:
+    # Check against the file uploader object itself, not session state
+    if not prompt.strip():
+        st.warning("⚠️ Please enter a prompt describing what you want to create")
+    elif not uploaded_image_1:
+        st.warning("⚠️ Please upload at least the first image")
+    else:
+        with st.spinner("✨ Creating your masterpiece..."):
             try:
                 contents = [prompt.strip()]
-                
-                # Collect all uploaded images
-                uploaded_images = []
-                for idx, img_file in enumerate([uploaded_image_1, uploaded_image_2, uploaded_image_3, uploaded_image_4], 1):
+
+                # Use the uploader objects directly as in your original code
+                image_files = [uploaded_image_1, uploaded_image_2, uploaded_image_3, uploaded_image_4]
+                processed = []
+
+                for idx, img_file in enumerate(image_files, 1):
                     if img_file:
-                        try:
-                            image_bytes = img_file.read()
-                            pil_img = Image.open(BytesIO(image_bytes))
-                            st.image(pil_img, caption=f"📷 Uploaded Image {idx}: {img_file.name}", use_container_width=True)
-                            contents.append(pil_img)
-                            uploaded_images.append(img_file.name)
-                        except Exception as e:
-                            st.warning(f"⚠️ Could not read image {img_file.name}: {e}")
-                            st.stop()
+                        img_file.seek(0)
+                        # We use the PIL images from session state for consistency
+                        pil_img = st.session_state.uploaded_images[f'img{idx}']
+                        contents.append(pil_img)
+                        processed.append(idx)
+                        img_file.seek(0)
 
-                st.info(f"📊 Processing {len(uploaded_images)} image(s)...")
-
-                # Generate using Gemini
                 response = model.generate_content(contents, stream=False)
 
-                # Parse result
                 found_image = False
+                text_output = None
+
                 for part in response.parts:
                     if hasattr(part, "text") and part.text:
-                        st.markdown("### 📝 Text Output")
-                        st.write(part.text)
+                        text_output = part.text
 
                     elif hasattr(part, "inline_data") and part.inline_data:
                         try:
                             img = Image.open(BytesIO(part.inline_data.data))
-                            st.image(img, caption="🖼️ Generated Image", use_container_width=True)
+                            st.session_state.generated_image = img
 
-                            # Prepare for download
                             img_bytes = BytesIO()
                             fmt = img_format.upper()
                             img.save(img_bytes, format=fmt)
                             img_bytes.seek(0)
+                            st.session_state.generated_image_bytes = img_bytes.getvalue()
 
-                            # Generate filename with timestamp
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             filename = f"gemini_image_{timestamp}.{img_format.lower()}"
+                            st.session_state.current_filename = filename
 
-                            # Save to S3/MinIO if configured
                             if minio_client:
                                 try:
-                                    img_bytes_copy = BytesIO()
-                                    img.save(img_bytes_copy, format=fmt)
-                                    img_bytes_copy.seek(0)
-                                    
+                                    img_bytes_copy = BytesIO(st.session_state.generated_image_bytes)
+
                                     minio_client.put_object(
                                         S3_BUCKET_NAME,
                                         filename,
                                         img_bytes_copy,
-                                        length=img_bytes_copy.getbuffer().nbytes,
+                                        length=len(st.session_state.generated_image_bytes),
                                         content_type=f"image/{img_format.lower()}"
                                     )
-                                    st.success(f"✅ Image saved to S3: {S3_BUCKET_NAME}/{filename}")
-                                except S3Error as s3_err:
-                                    st.error(f"❌ Failed to upload to S3: {s3_err}")
-                                except Exception as upload_err:
-                                    st.error(f"❌ Upload error: {upload_err}")
+                                    st.success(f"✅ Image saved to S3: {filename}")
+                                except Exception as e:
+                                    st.error(f"❌ S3 upload failed: {e}")
 
-                            # Download button
-                            st.download_button(
-                                label="⬇️ Download Image",
-                                data=img_bytes,
-                                file_name=filename,
-                                mime=f"image/{img_format.lower()}",
-                            )
                             found_image = True
                         except Exception as img_error:
-                            st.warning(f"⚠️ Could not load generated image: {img_error}")
+                            st.error(f"⚠️ Could not load generated image: {img_error}")
 
                 if not found_image:
-                    st.error("❌ No image output found. Try another prompt or different images.")
+                    st.error("❌ No image was generated. Please try a different prompt.")
+                else:
+                    st.success(f"🎉 Successfully generated image using {len(processed)} input image(s)!")
+
+                if text_output:
+                    with st.expander("📝 View AI Response Text"):
+                        st.write(text_output)
 
             except Exception as e:
                 st.error(f"🚨 An error occurred: {e}")
 
-# --- Prompt Tips ---
-st.markdown("---")
-st.markdown("""
-### 💡 Prompt Writing Tips
+# --- Results ---
+if st.session_state.generated_image:
+    st.divider()
+    st.subheader("🎨 Your Results")
 
-- 🧠 Describe your intent clearly
-- 🎨 Specify style, tone, or purpose
-- 🖼️ Useful examples:
-  - "Give me long blond hair, slicked back. Put me like a cowboy riding a horse, hunting thieves through the forest with energy and intensity. Close up on my face."
-  - "Create a before-and-after restoration"
-  - "Combine these into a futuristic landscape"
-  - "Turn these faces into a single stylized portrait"
-  - "Merge all images into a cohesive collage"
-""")
+    num_inputs = len(st.session_state.uploaded_images)
+    total_images = num_inputs + 1
 
-st.markdown("---")
-st.markdown("""
-### 🔧 Environment Variables Required
+    # Ensure at least 1 column, even if 0 inputs (shouldn't happen)
+    cols = st.columns(max(total_images, 1))
 
-**Gemini API:**
-- `GEMINI_API_KEY` - Your Google Gemini API key
+    col_idx = 0
 
-**S3/MinIO Storage (Optional):**
-- `S3_ENDPOINT` - MinIO/S3 endpoint (e.g., "localhost:9000" or "s3.amazonaws.com")
-- `S3_ACCESS_KEY` - Access key
-- `S3_SECRET_KEY` - Secret key
-- `S3_BUCKET_NAME` - Bucket name to store images
-- `S3_SECURE` - Use HTTPS (true/false, default: true)
+    # Display input thumbnails
+    for key in ['img1', 'img2', 'img3', 'img4']:
+        if key in st.session_state.uploaded_images:
+            with cols[col_idx]:
+                st.markdown(f"**📷 Input {col_idx + 1}**")
 
-**Configuration Options:**
-1. Set as system environment variables, OR
-2. Create a `.env` file in the same directory as this script
-""")
+                thumb = st.session_state.uploaded_images[key].copy()
+                thumb.thumbnail((250, 250), Image.Resampling.LANCZOS)
+
+                # Native container for result thumbnail
+                with st.container(border=True):
+                    st.image(thumb, use_container_width='auto')
+                col_idx += 1
+
+    # Display generated thumbnail
+    # Check if col_idx is still valid (it might be out of bounds if no images were processed)
+    if col_idx < len(cols):
+        with cols[col_idx]:
+            st.markdown("**✨ Generated**")
+
+            gen_thumb = st.session_state.generated_image.copy()
+            gen_thumb.thumbnail((250, 250), Image.Resampling.LANCZOS)
+
+            # Native container for result thumbnail
+            with st.container(border=True):
+                st.image(gen_thumb, use_container_width='auto')
+
+    # Download
+    st.markdown("") # Adds a bit of space
+    col1, col2, col3 = st.columns([2, 2, 2])
+    with col2:
+        st.download_button(
+            "⬇️ Download Generated Image",
+            data=st.session_state.generated_image_bytes,
+            file_name=st.session_state.current_filename,
+            mime=f"image/{img_format.lower()}",
+            use_container_width=True
+        )
+
+# --- Tips ---
+st.divider()
+with st.expander("💡 Tips for Amazing Results"):
+    st.markdown("""
+    **Prompt Writing Tips:**
+    - Be specific and detailed about what you want
+    - Mention artistic style, mood, lighting, and atmosphere
+    - Describe the composition and perspective
+    
+    **Example Prompts:**
+    - *"Transform me into a cowboy riding a horse through a misty forest at sunset, cinematic lighting, dramatic close-up on face"*
+    - *"Combine these images into a futuristic cyberpunk cityscape with neon lights and rain"*
+    - *"Create an artistic collage with watercolor effect and soft pastel colors"*
+    - *"Merge these portraits into a movie poster style with epic dramatic lighting"*
+    """)
+
+with st.expander("🔧 Configuration & Setup"):
+    st.markdown("""
+    **Required Environment Variables:**
+    - `GEMINI_API_KEY` - Your Google Gemini API key
+    
+    **Optional (for S3/MinIO storage):**
+    - `S3_ENDPOINT` - e.g., "localhost:9000"
+    - `S3_ACCESS_KEY` - Access key
+    - `S3_SECRET_KEY` - Secret key
+    - `S3_BUCKET_NAME` - Bucket name
+    - `S3_SECURE` - "true" or "false"
+    
+    Set these in your environment or create a `.env` file in the same directory.
+    """)
+
+    if s3_configured:
+        st.success("✅ S3/MinIO storage is configured and active")
+    else:
+        st.info("ℹ️ S3/MinIO storage not configured - images available for download only")

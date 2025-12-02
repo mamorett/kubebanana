@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Page setup ---
-st.set_page_config(page_title="🎨🍌 Gemini 2.5 Multi-Image Editor", layout="wide")
-st.title("🎨🍌 Gemini 2.5 Flash Multi-Image Editor")
+st.set_page_config(page_title="🎨🍌 Gemini nano-banana Multi-Image Editor", layout="wide")
+st.title("🎨🍌 Gemini nano-banana Multi-Image Editor")
 st.caption("Transform your images with AI-powered creativity")
 
 # --- API key ---
@@ -57,10 +57,9 @@ elif s3_configured:
 else:
     save_mode = "memory"
 
-# --- Gemini model setup ---
+# --- Gemini configuration ---
 try:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.5-flash-image-preview")
 except Exception as e:
     st.error(f"❌ Gemini setup error: {e}")
     st.stop()
@@ -80,12 +79,36 @@ else:
     st.sidebar.info("Images will only be available for download (not stored persistently)")
 
 st.sidebar.subheader("Model")
-st.sidebar.write("gemini-2.5-flash-image-preview")
+model_choice = st.sidebar.selectbox(
+    "Select Model",
+    ["gemini-3.0-nano-banana-pro", "gemini-2.5-flash-image-preview"],
+    index=0
+)
+
+if model_choice == "gemini-3.0-nano-banana-pro":
+    image_ratio = st.sidebar.selectbox(
+        "Image Ratio",
+        ["1:1", "16:9", "4:3", "3:4", "9:16"],
+        index=0
+    )
 
 thumb_size = st.sidebar.slider("Thumbnail size (pixels)", min_value=100, max_value=600, value=300, step=50)
 save_with_date_folder = st.sidebar.checkbox("Save under date-named folder (YYYY-MM-DD)", value=False)
 
 st.sidebar.markdown("---")
+
+# --- Model Instantiation ---
+model_mapping = {
+    "gemini-2.5-flash-image-preview": "gemini-2.5-flash-image-preview",
+    "gemini-3.0-nano-banana-pro": "gemini-3-pro-image-preview"
+}
+
+try:
+    api_model_name = model_mapping[model_choice]
+    model = genai.GenerativeModel(api_model_name)
+except Exception as e:
+    st.error(f"❌ Model initialization error: {e}")
+    st.stop()
 
 # --- Prompt input ---
 st.subheader("📝 Describe Your Vision")
@@ -144,14 +167,23 @@ if generate_btn:
     else:
         with st.spinner("✨ Creating your masterpiece..."):
             try:
-                contents = [prompt.strip()]
+                # Incorporate model-specific settings into the prompt
+                final_prompt = prompt.strip()
+                if model_choice == "gemini-3.0-nano-banana-pro":
+                    final_prompt += f"\n\nSpecifications:\n- Aspect Ratio: {image_ratio}"
+                
+                contents = [final_prompt]
                 processed = []
                 for i in range(1,5):
                     key = f'img{i}'
                     if key in st.session_state.uploaded_images:
                         contents.append(st.session_state.uploaded_images[key])
                         processed.append(key)
-                response = model.generate_content(contents, stream=False)
+                
+                response = model.generate_content(
+                    contents, 
+                    stream=False
+                )
 
                 found_image = False
                 text_output = None
